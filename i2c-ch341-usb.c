@@ -104,14 +104,14 @@
  *
  *  Configurable are:
  *
- *  - Pin 15 (D0/CS0  ) as input/output (CH341_PIN_MODE_IN / CH341_PIN_MODE_OUT)
- *  - Pin 16 (D1/CS1  ) as input/output (CH341_PIN_MODE_IN / CH341_PIN_MODE_OUT)
- *  - Pin 17 (D2/CS2  ) as input/output (CH341_PIN_MODE_IN / CH341_PIN_MODE_OUT)
- *  - Pin 18 (D3/CS2  ) as input/output (CH341_PIN_MODE_IN / CH341_PIN_MODE_OUT)
- *  - Pin 19 (D4/DOUT2) as input/output (CH341_PIN_MODE_IN / CH341_PIN_MODE_OUT)
- *  - Pin 20 (D5/DOUT ) as input/output (CH341_PIN_MODE_IN / CH341_PIN_MODE_OUT)
- *  - Pin 21 (D6/DIN2 ) as input        (CH341_PIN_MODE_IN)
- *  - Pin 22 (D7/DIN  ) as input        (CH341_PIN_MODE_IN)
+ *  - Pin 15 (D0/CS0/CTS  ) as input/output (CH341_PIN_MODE_IN / CH341_PIN_MODE_OUT)
+ *  - Pin 16 (D1/CS1/DSR  ) as input/output (CH341_PIN_MODE_IN / CH341_PIN_MODE_OUT)
+ *  - Pin 17 (D2/CS2/RI   ) as input/output (CH341_PIN_MODE_IN / CH341_PIN_MODE_OUT)
+ *  - Pin 18 (D3/SCK/DCD  ) as input/output (CH341_PIN_MODE_IN / CH341_PIN_MODE_OUT)
+ *  - Pin 19 (D4/DOUT2/OUT) as input/output (CH341_PIN_MODE_IN / CH341_PIN_MODE_OUT)
+ *  - Pin 20 (D5/MOSI/DTR ) as input/output (CH341_PIN_MODE_IN / CH341_PIN_MODE_OUT)
+ *  - Pin 21 (D6/DIN2/RTS ) as input        (CH341_PIN_MODE_IN)
+ *  - Pin 22 (D7/MISO/D7  ) as input        (CH341_PIN_MODE_IN)
  */
 
 struct ch341_pin_config {
@@ -123,7 +123,7 @@ struct ch341_pin_config {
 
 struct ch341_pin_config ch341_board_config[CH341_GPIO_NUM_PINS] =
 {
-    // pin  GPIO mode           GPIO name   hwirq
+    // pin  GPIO mode           GPIO name   hwirq  // Names not used. MarkMLl
     {   15, CH341_PIN_MODE_OUT , "gpio0"    , 0 }, // used as output
     {   16, CH341_PIN_MODE_OUT , "gpio1"    , 0 }, // used as output
     {   17, CH341_PIN_MODE_OUT , "gpio2"    , 0 }, // used as output
@@ -231,7 +231,12 @@ static int ch341_cfg_probe (struct ch341_device* ch341_dev)
         // --- read in pin configuration
 
         // if pin is not configured as CS signal, set GPIO configuration
-        ch341_dev->gpio_names  [ch341_dev->gpio_num] = cfg->name;
+
+// DON'T force a pin (line) name, doing so will make it impossible for an API
+// user to identify which pin in /sys/class/gpio is associated with which
+// gpiochip. MarkMLl
+
+//        ch341_dev->gpio_names  [ch341_dev->gpio_num] = cfg->name;
         ch341_dev->gpio_pins   [ch341_dev->gpio_num] = cfg;
         ch341_dev->gpio_irq_map[ch341_dev->gpio_num] = -1; // no valid IRQ
 
@@ -259,9 +264,17 @@ static int ch341_cfg_probe (struct ch341_device* ch341_dev)
             // if pin is INPUT, it has to be masked out in GPIO direction mask
             ch341_dev->gpio_mask &= ~ch341_dev->gpio_bits[ch341_dev->gpio_num];
 
-        DEV_INFO (CH341_IF_ADDR, "%s %s gpio=%d irq=%d %s",
+// Because this uses the module's hardcoded name which is no longer being
+// forced, the debugging message is no longer entirely accurate. MarkMLl
+
+//        DEV_INFO (CH341_IF_ADDR, "%s %s gpio=%d irq=%d %s",
+//                  cfg->mode == CH341_PIN_MODE_IN ? "input " : "output",
+//                  cfg->name, ch341_dev->gpio_num, ch341_dev->irq_num,
+//                  cfg->hwirq ? "(hwirq)" : "");
+
+        DEV_INFO (CH341_IF_ADDR, "%s gpio=%d irq=%d %s",
                   cfg->mode == CH341_PIN_MODE_IN ? "input " : "output",
-                  cfg->name, ch341_dev->gpio_num, ch341_dev->irq_num,
+                  ch341_dev->gpio_num, ch341_dev->irq_num,
                   cfg->hwirq ? "(hwirq)" : "");
 
         ch341_dev->irq_num++;
@@ -1044,6 +1057,16 @@ static int ch341_gpio_probe (struct ch341_device* ch341_dev)
     DEV_DBG (CH341_IF_ADDR, "registered GPIOs from %d to %d",
              gpio->base, gpio->base + gpio->ngpio - 1);
 
+// Uncomment this if we do want the pins to be automatically exported in
+// /sys/class/gpio when the device is detected. This should not be the
+// normal case, but might be convenient if the user is known to be
+// unprivileged. MarkMLl
+
+#define DO_AUTO_EXPORT
+
+// FIXME : Inaccurate reference to ch341_board_config[i].name
+
+#ifdef DO_AUTO_EXPORT
     for (i = 0; i < CH341_GPIO_NUM_PINS; i++)
     {
         // in case the pin as CS signal, it is an GPIO pin
@@ -1058,6 +1081,7 @@ static int ch341_gpio_probe (struct ch341_device* ch341_dev)
         }
         j++;
     }
+#endif
 
     ch341_dev->gpio_thread = kthread_run (&ch341_gpio_poll_function, ch341_dev, "i2c-ch341-usb-poll");
 
