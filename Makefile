@@ -16,7 +16,7 @@ endif
 MODULE_NAME  = i2c-ch341-usb
 obj-m       := $(MODULE_NAME).o   
 
-$(MODULE_NAME).ko: $(MODULE_NAME).c
+$(MODULE_NAME).ko: $(MODULE_NAME).c Makefile
 	make -C $(KERNEL_DIR) M=$(PWD) modules
 
 all:
@@ -33,6 +33,7 @@ install: $(MODULE_NAME).ko
 	depmod
 	
 uninstall:
+	modprobe -r $(MODULE_NAME)
 	rm -f $(MODULE_DIR)/kernel/drivers/i2c/busses/$(MODULE_NAME).ko
 	depmod
 
@@ -46,6 +47,7 @@ endif
 	@dkms install .
 	
 uninstall:
+	modprobe -r $(MODULE_NAME)
 ifneq ($(MODULE_INSTALLED),)
 	dkms remove -m $(MODULE_NAME) -v $(MODULE_VERSION) --all
 	rm -rf /usr/src/$(MODULE_NAME)-$(MODULE_VERSION)

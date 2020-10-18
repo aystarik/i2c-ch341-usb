@@ -16,6 +16,8 @@
  * published by the Free Software Foundation, version 2.
  */
 
+// FIXME: I2C to be tested, top GPIO bit can be set "out" but inoperative. MarkMLl
+
 // uncomment following line to activate kernel debug handling
 // #define DEBUG
    #define DEBUG_PRINTK
@@ -102,7 +104,7 @@
  *
  *  Change the default values in *ch341_board_config* for your configuraton
  *
- *  Configurable are:
+ *  Configurable for the CH341A are:
  *
  *  - Pin 15 (D0/CS0/CTS  ) as input/output (CH341_PIN_MODE_IN / CH341_PIN_MODE_OUT)
  *  - Pin 16 (D1/CS1/DSR  ) as input/output (CH341_PIN_MODE_IN / CH341_PIN_MODE_OUT)
@@ -112,6 +114,8 @@
  *  - Pin 20 (D5/MOSI/DTR ) as input/output (CH341_PIN_MODE_IN / CH341_PIN_MODE_OUT)
  *  - Pin 21 (D6/DIN2/RTS ) as input        (CH341_PIN_MODE_IN)
  *  - Pin 22 (D7/MISO/D7  ) as input        (CH341_PIN_MODE_IN)
+ *  - Pin 23 (SDA)
+ *  - Pin 24 (SCL)
  */
 
 struct ch341_pin_config {
@@ -998,11 +1002,23 @@ int ch341_gpio_to_irq (struct gpio_chip *chip, unsigned offset)
 }
 
 
+// Uncomment this if we do want the pins to be automatically exported in
+// /sys/class/gpio when the device is detected. This should not be the
+// normal case, but might be convenient if the user is known to be
+// unprivileged. MarkMLl
+
+// define DO_AUTO_EXPORT
+
+// FIXME: Questionable reference to ch341_board_config[i].name
+
+
 static int ch341_gpio_probe (struct ch341_device* ch341_dev)
 {
     struct gpio_chip *gpio = &ch341_dev->gpio;
     int result;
+#ifdef DO_AUTO_EXPORT
     int i, j = 0;
+#endif
 
     CHECK_PARAM_RET (ch341_dev, -EINVAL);
 
@@ -1056,15 +1072,6 @@ static int ch341_gpio_probe (struct ch341_device* ch341_dev)
 
     DEV_DBG (CH341_IF_ADDR, "registered GPIOs from %d to %d",
              gpio->base, gpio->base + gpio->ngpio - 1);
-
-// Uncomment this if we do want the pins to be automatically exported in
-// /sys/class/gpio when the device is detected. This should not be the
-// normal case, but might be convenient if the user is known to be
-// unprivileged. MarkMLl
-
-#define DO_AUTO_EXPORT
-
-// FIXME : Inaccurate reference to ch341_board_config[i].name
 
 #ifdef DO_AUTO_EXPORT
     for (i = 0; i < CH341_GPIO_NUM_PINS; i++)
@@ -1301,6 +1308,8 @@ MODULE_ALIAS("i2c:ch341");
 MODULE_AUTHOR("Gunar Schorcht <gunar@schorcht.net>");
 MODULE_DESCRIPTION("i2c-ch341-usb driver v1.0.0");
 MODULE_LICENSE("GPL");
+
+MODULE_SOFTDEP("post: i2c-dev");
 
 module_param(speed, uint, 0644);
 MODULE_PARM_DESC(speed, " I2C bus speed: 0 (20 kbps), 1 (100 kbps), 2 (400 kbps), 3 (750 kbps): ");
