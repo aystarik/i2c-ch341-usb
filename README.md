@@ -28,8 +28,8 @@ Data pins D0...D7, which are normally used for SPI interface but not for the I2C
 | Pin | Name | SPI Function (default) | Configurable as (**CH341 default in bold face**)   |
 | --- | ---- | ---------------------- | ------------------ |
 | 15  | D0   | CS0                    | Input, **Output**  |
-| 16  | D1   | CS0                    | Input, **Output**  |
-| 17  | D2   | CS0                    | Input, **Output**  |
+| 16  | D1   | CS1                    | Input, **Output**  |
+| 17  | D2   | CS2                    | Input, **Output**  |
 | 18  | D3   | SCK                    | Input, **Output**  |
 | 19  | D4   | OUT2                   | Input, **Output**  |
 | 20  | D5   | OUT                    | Input, **Output**  |
