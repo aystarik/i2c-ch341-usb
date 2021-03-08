@@ -226,7 +226,8 @@ static int ch341_cfg_probe (struct ch341_device* ch341_dev)
         }
 
         // is pin configured correctly as input in case of pin 21 and 22
-        if ((cfg->pin == 21 || cfg->pin == 22) && cfg->mode != CH341_PIN_MODE_IN)
+        if ((cfg->pin 
+             || cfg->pin == 22) && cfg->mode != CH341_PIN_MODE_IN)
         {
             DEV_ERR(CH341_IF_ADDR, "pin %d: must be an input", cfg->pin);
             return -EINVAL;
@@ -948,6 +949,13 @@ int ch341_gpio_set_direction (struct gpio_chip *chip, unsigned offset, bool inpu
     if (ch341_dev->gpio_pins[offset]->pin == 21 && !input)
     {
         DEV_ERR(CH341_IF_ADDR, "pin 21: must be an input");
+        return -EINVAL;
+    }
+
+    // Should also be applied to pin 22. MarkMLl.
+    if (ch341_dev->gpio_pins[offset]->pin == 22 && !input)
+    {
+        DEV_ERR(CH341_IF_ADDR, "pin 22: must be an input");
         return -EINVAL;
     }
 
