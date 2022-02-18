@@ -226,8 +226,7 @@ static int ch341_cfg_probe (struct ch341_device* ch341_dev)
         }
 
         // is pin configured correctly as input in case of pin 21 and 22
-        if ((cfg->pin 
-             || cfg->pin == 22) && cfg->mode != CH341_PIN_MODE_IN)
+        if ((cfg->pin == 21 || cfg->pin == 22) && cfg->mode != CH341_PIN_MODE_IN)
         {
             DEV_ERR(CH341_IF_ADDR, "pin %d: must be an input", cfg->pin);
             return -EINVAL;
@@ -385,6 +384,31 @@ static int ch341_i2c_write_outputs (struct ch341_device* ch341_dev)
     return (result < 0) ? result : CH341_OK;
 }
 
+static int ch341_i2c_check_dev(struct ch341_device *dev, u8 addr)
+{
+        int retval;
+
+        dev->out_buf[0] = CH341_CMD_I2C_STREAM;
+        dev->out_buf[1] = CH341_CMD_I2C_STM_STA;
+        dev->out_buf[2] =
+                CH341_CMD_I2C_STM_OUT; /* NOTE: must be zero length otherwise it
+                                          messes up the device */
+        dev->out_buf[3] = (addr << 1) | 0x1;
+        dev->out_buf[4] =
+                CH341_CMD_I2C_STM_IN; /* NOTE: zero length here as well */
+        dev->out_buf[5] = CH341_CMD_I2C_STM_STO;
+        dev->out_buf[6] = CH341_CMD_I2C_STM_END;
+
+        retval = ch341_usb_transfer(dev, 6, 1);
+        if (retval < 0)
+                return retval;
+
+        if (dev->in_buf[0] & 0x80)
+                return -ETIMEDOUT;
+
+        return 0;
+}
+
 static int ch341_i2c_transfer (struct i2c_adapter *adpt, struct i2c_msg *msgs, int num)
 {
     struct ch341_device* ch341_dev;
@@ -409,6 +433,14 @@ static int ch341_i2c_transfer (struct i2c_adapter *adpt, struct i2c_msg *msgs, i
 
     for (i = 0; i < num; i++)
     {
+
+// "Phantom device" fix from https://github.com/allanbian1017/i2c-ch341-usb/issues/1
+// to get  i2cdetect -y 9  etc. working properly. MarkMLl
+
+        result = ch341_i2c_check_dev(ch341_dev, msgs[0].addr);
+        if (result < 0)
+            break;
+
         // size larger than endpoint max transfer size
         if ((msgs[i].len + (i == num-1 ? 6 : 5) > 32))
         {
