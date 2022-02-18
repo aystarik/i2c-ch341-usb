@@ -16,7 +16,7 @@
  * published by the Free Software Foundation, version 2.
  */
 
-// FIXME: I2C to be tested, top GPIO bit can be set "out" but inoperative. MarkMLl
+// FIXME: Top GPIO bit can be set "out" but inoperative. MarkMLl
 
 // uncomment following line to activate kernel debug handling
 // #define DEBUG
