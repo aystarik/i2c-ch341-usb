@@ -9,7 +9,7 @@ The driver can be used with **CH341A** USB to UART/I2C/SPI adapter boards to con
 
 Additionally, CH341A data pins that are not used for synchronous serial interfaces can be configured as **GPIO** pins. The driver can generate **software interrupts** for all input pins. **One input** pin can be connected with the CH341A interrupt pin to generate **hardware interrupts**. 
 
-The I2C interface driver was initially derived from CH341 I2C driver from Tse Lun Bien [https://github.com/allanbian1017/i2c-ch341-usb.git] and extended by GPIO and interrupt handling capabilities. It incorporates a backported fix for the phantom device problem which messed up output from  i2cdetect -y 9  etc. which does not yet appear in Gunar Schorcht's version.
+The I2C interface driver was initially derived from CH341 I2C driver from Tse Lun Bien [https://github.com/allanbian1017/i2c-ch341-usb.git] and extended by GPIO and interrupt handling capabilities. Since it was forked the parent project has been modified to fix the phantom device problem which messed up output from  i2cdetect -y 9  etc., however I find this to be incompatible with some types of slave device so while the code is present it's disabled.
 
 ## I2C interface limitations
 

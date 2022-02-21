@@ -18,6 +18,11 @@
 
 // FIXME: Top GPIO bit can be set "out" but inoperative. MarkMLl
 
+// This is incompatible with certain types of slave device so is
+// probably best left disabled. MarkMLl
+//
+// #define PHANTOM_DEVICE_FIX
+
 // uncomment following line to activate kernel debug handling
 // #define DEBUG
    #define DEBUG_PRINTK
@@ -384,6 +389,8 @@ static int ch341_i2c_write_outputs (struct ch341_device* ch341_dev)
     return (result < 0) ? result : CH341_OK;
 }
 
+#ifdef PHANTOM_DEVICE_FIX
+
 static int ch341_i2c_check_dev(struct ch341_device *dev, u8 addr)
 {
         int retval;
@@ -408,6 +415,8 @@ static int ch341_i2c_check_dev(struct ch341_device *dev, u8 addr)
 
         return 0;
 }
+
+#endif
 
 static int ch341_i2c_transfer (struct i2c_adapter *adpt, struct i2c_msg *msgs, int num)
 {
@@ -434,12 +443,16 @@ static int ch341_i2c_transfer (struct i2c_adapter *adpt, struct i2c_msg *msgs, i
     for (i = 0; i < num; i++)
     {
 
+#ifdef PHANTOM_DEVICE_FIX
+
 // "Phantom device" fix from https://github.com/allanbian1017/i2c-ch341-usb/issues/1
 // to get  i2cdetect -y 9  etc. working properly. MarkMLl
 
         result = ch341_i2c_check_dev(ch341_dev, msgs[0].addr);
         if (result < 0)
             break;
+
+#endif
 
         // size larger than endpoint max transfer size
         if ((msgs[i].len + (i == num-1 ? 6 : 5) > 32))
