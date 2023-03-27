@@ -19,8 +19,6 @@ Currently only basic I2C read and write functions (**```I2C_FUNC_I2C```**) are s
 
 The CH341A only supports **7 bit addressing**.
 
-Due of the limited CH341A USB endpoint buffer size of 32 byte that is used for I2C data as well as adapter in-band signaling, the driver supports only I2C messages with a **maximum data size of 26 bytes**.
-
 ## GPIO limitations
 
 Data pins D0...D7, which are normally used for SPI interface but not for the I2C interface, can be configured as GPIO pins as following. 
