@@ -425,7 +425,7 @@ static int ch341_i2c_check_dev(struct ch341_device *dev, uint16_t addr)
 int ch341_i2c_read(struct ch341_device *dev, struct i2c_msg *msg)
 {
 	int byteoffset = 0, bytestoread;
-	int ret;
+	int ret = 0;
 	uint8_t *ptr;
 	while (msg->len - byteoffset > 0) {
 		mutex_lock(&ch341_lock);
