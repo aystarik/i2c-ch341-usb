@@ -396,6 +396,8 @@ static int ch341_i2c_check_dev(struct ch341_device *dev, uint16_t addr)
 {
 	int retval;
 
+	mutex_lock(&ch341_lock);
+
 	dev->out_buf[0] = CH341_CMD_I2C_STREAM;
 	dev->out_buf[1] = CH341_CMD_I2C_STM_STA;
 	dev->out_buf[2] = CH341_CMD_I2C_STM_OUT;	/* NOTE: must be zero length otherwise it
@@ -406,6 +408,9 @@ static int ch341_i2c_check_dev(struct ch341_device *dev, uint16_t addr)
 	dev->out_buf[6] = CH341_CMD_I2C_STM_END;
 
 	retval = ch341_usb_transfer(dev, 7, 1);
+
+	mutex_unlock(&ch341_lock);
+
 	if (retval < 0)
 		return retval;
 
@@ -423,6 +428,8 @@ int ch341_i2c_read(struct ch341_device *dev, struct i2c_msg *msg)
 	int ret;
 	uint8_t *ptr;
 	while (msg->len - byteoffset > 0) {
+		mutex_lock(&ch341_lock);
+
 		bytestoread = msg->len - byteoffset;
 		if (bytestoread > 32)
 			bytestoread = 32;
@@ -439,8 +446,15 @@ int ch341_i2c_read(struct ch341_device *dev, struct i2c_msg *msg)
 		*ptr++ = CH341_CMD_I2C_STM_END;
 
 		ret = ch341_usb_transfer(dev, ptr - dev->out_buf, bytestoread);
-		memcpy(&msg->buf[byteoffset], dev->in_buf, bytestoread);
-		byteoffset += bytestoread;
+		if (ret > -1) {
+			memcpy(&msg->buf[byteoffset], dev->in_buf, bytestoread);
+			byteoffset += bytestoread;
+		}
+
+		mutex_unlock(&ch341_lock);
+
+		if (ret < 0)
+			break;
 	}
 	return ret;
 }
@@ -451,6 +465,8 @@ int ch341_i2c_write(struct ch341_device *dev, struct i2c_msg *msg) {
 	int ret = 0;
 	bool first = true;
 	do {
+		mutex_lock(&ch341_lock);
+
 		outptr = dev->out_buf;
 		*outptr++ = CH341_CMD_I2C_STREAM;
 		if (first) { // Start packet
@@ -482,6 +498,9 @@ int ch341_i2c_write(struct ch341_device *dev, struct i2c_msg *msg) {
 		*outptr++ = CH341_CMD_I2C_STM_END;
 		first = false;
 		ret = ch341_usb_transfer(dev, outptr - dev->out_buf, 0);
+
+		mutex_unlock(&ch341_lock);
+
 		if (ret < 0)
 			break;
 	} while (left);
@@ -502,8 +521,6 @@ static int ch341_i2c_transfer(struct i2c_adapter *adpt, struct i2c_msg *msgs, in
 	ch341_dev = (struct ch341_device *)adpt->algo_data;
 
 	CHECK_PARAM_RET(ch341_dev, EIO);
-
-	mutex_lock(&ch341_lock);
 
 	for (i = 0; i < num; ++i) {
 		//DEV_DBG(CH341_IF_ADDR, "msgs[%d] = {.addr = 0x%02x, .len = %d}", i, msgs[i].addr, msgs[i].len); 
@@ -529,8 +546,6 @@ static int ch341_i2c_transfer(struct i2c_adapter *adpt, struct i2c_msg *msgs, in
 				break;
 		}
 	}
-
-	mutex_unlock(&ch341_lock);
 
 	if (result < 0)
 		return result;
