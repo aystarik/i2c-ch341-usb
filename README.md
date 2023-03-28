@@ -175,7 +175,7 @@ The I2C bus speed can be configured using the module parameter ```speed```. The 
 | 0  | 20 kbps    |
 | 1  | 100 kbps   |
 | 2  | 400 kbps   |
-| 0  | 750 kbps   |
+| 3  | 750 kbps   |
 
 By default the driver uses an I2C bus speed of 100 kbps (speed=0). It can be changed using the module parameter ```speed``` either when loading the module, e.g.,
 ```

@@ -424,7 +424,7 @@ static int ch341_i2c_check_dev(struct ch341_device *dev, uint16_t addr)
 
 int ch341_i2c_read(struct ch341_device *dev, struct i2c_msg *msg)
 {
-	unsigned byteoffset = 0, bytestoread;
+	int byteoffset = 0, bytestoread;
 	int ret;
 	uint8_t *ptr;
 	while (msg->len - byteoffset > 0) {
@@ -883,22 +883,20 @@ int ch341_gpio_get(struct gpio_chip *chip, unsigned offset)
 }
 
 // FIXME: not tested at the moment (will be introduced with kernel 4.15.0)
-int ch341_gpio_get_multiple(struct gpio_chip *chip,
-				unsigned long *mask, unsigned long *bits)
+int ch341_gpio_get_multiple(struct gpio_chip *chip, unsigned long *mask, unsigned long *bits)
 {
 	struct ch341_device *ch341_dev = (struct ch341_device *)gpiochip_get_data(chip);
-	int i;
+	unsigned i;
 
 	CHECK_PARAM_RET(ch341_dev, -EINVAL);
 	CHECK_PARAM_RET(mask, -EINVAL);
 	CHECK_PARAM_RET(bits, -EINVAL);
 
-	for (i = 0; i < ch341_dev->gpio_num; i++)
-		if (*mask & (1 << i)) {
-			*bits &= ~(1 << i);
-			*bits |=
-				(((ch341_dev->gpio_io_data & ch341_dev->
-				   gpio_bits[i]) ? 1 : 0) << i);
+	for (i = 0; i < ch341_dev->gpio_num; ++i)
+		if (*mask & (1UL << i)) {
+			*bits &= ~(1UL << i);
+			if (ch341_dev->gpio_io_data & ch341_dev->gpio_bits[i])
+				*bits |= 1UL << i;
 		}
 
 	// DEV_DBG (CH341_IF_ADDR, "mask=%08lx bit=%08lx io_data=%02x",
@@ -1254,7 +1252,7 @@ static int ch341_usb_probe(struct usb_interface *usb_if,
 	// create and initialize a new device data structure
 	if (!(ch341_dev = kzalloc(sizeof(struct ch341_device), GFP_KERNEL))) {
 		DEV_ERR(&usb_if->dev, "could not allocate device memor");
-		usb_put_dev(ch341_dev->usb_dev);
+		usb_put_dev(usb_dev);
 		return -ENOMEM;
 	}
 
