@@ -390,67 +390,71 @@ static int ch341_i2c_write_outputs(struct ch341_device *ch341_dev)
 	return (result < 0) ? result : CH341_OK;
 }
 
-#ifdef PHANTOM_DEVICE_FIX
-
-static int ch341_i2c_check_dev(struct ch341_device *dev, uint16_t addr)
+static int ch341_i2c_quick_write(struct ch341_device *dev, struct i2c_msg *msg)
 {
-	int retval;
+	int retval, actual = 0;
+	uint8_t *ptr = 0;
 
 	mutex_lock(&ch341_lock);
+	ptr = dev->out_buf;
+	*ptr++ = CH341_CMD_I2C_STREAM;
+	*ptr++ = CH341_CMD_I2C_STM_STA;
+	*ptr++ = CH341_CMD_I2C_STM_OUT; // wlen=0 is same as wlen=1 but also ask for status from I2C
+	*ptr++ = msg->addr << 1;
+	*ptr++ = CH341_CMD_I2C_STM_STO;
 
-	dev->out_buf[0] = CH341_CMD_I2C_STREAM;
-	dev->out_buf[1] = CH341_CMD_I2C_STM_STA;
-	dev->out_buf[2] = CH341_CMD_I2C_STM_OUT;	/* NOTE: must be zero length otherwise it
-							   messes up the device */
-	dev->out_buf[3] = (addr << 1) | 1;
-	dev->out_buf[4] = CH341_CMD_I2C_STM_IN;	/* NOTE: zero length here as well */
-	dev->out_buf[5] = CH341_CMD_I2C_STM_STO;
-	dev->out_buf[6] = CH341_CMD_I2C_STM_END;
-
-	retval = ch341_usb_transfer(dev, 7, 1);
-
-	mutex_unlock(&ch341_lock);
-
+	retval = usb_bulk_msg(dev->usb_dev, usb_sndbulkpipe(dev->usb_dev, usb_endpoint_num(dev->ep_out)),
+				dev->out_buf, ptr - dev->out_buf, &actual, 2000);
 	if (retval < 0)
-		return retval;
-
-	if (dev->in_buf[0] & 0x80)
-		return -ETIMEDOUT;
-
-	return 0;
+		goto unlock;
+	retval = usb_bulk_msg(dev->usb_dev, usb_rcvbulkpipe(dev->usb_dev, usb_endpoint_num(dev->ep_in)),
+				dev->in_buf, 8, &actual, 2000);
+	if (retval < 0)
+		goto unlock;
+	if (dev->in_buf[0] & 0x80) // check status for NACK
+		retval = -ETIMEDOUT;
+unlock:
+	mutex_unlock(&ch341_lock);
+	return retval;
 }
-
-#endif
 
 int ch341_i2c_read(struct ch341_device *dev, struct i2c_msg *msg)
 {
 	int byteoffset = 0, bytestoread;
-	int ret = 0;
+	int ret = 0, actual = 0;
 	uint8_t *ptr;
 	while (msg->len - byteoffset > 0) {
 		mutex_lock(&ch341_lock);
 
 		bytestoread = msg->len - byteoffset;
-		if (bytestoread > 32)
-			bytestoread = 32;
+		if (bytestoread > 31)
+			bytestoread = 31;
 		ptr = dev->out_buf;
 		*ptr++ = CH341_CMD_I2C_STREAM;
 		*ptr++ = CH341_CMD_I2C_STM_STA;
-		*ptr++ = CH341_CMD_I2C_STM_OUT | 1;
+		*ptr++ = CH341_CMD_I2C_STM_OUT; // wlen=0 is same as wlen=1 but also ask for status from I2C
 		*ptr++ = (msg->addr << 1) | 1;
 		if (bytestoread > 1) {
 			*ptr++ = CH341_CMD_I2C_STM_IN | (bytestoread - 1);
 		}
 		*ptr++ = CH341_CMD_I2C_STM_IN;
 		*ptr++ = CH341_CMD_I2C_STM_STO;
-		*ptr++ = CH341_CMD_I2C_STM_END;
 
-		ret = ch341_usb_transfer(dev, ptr - dev->out_buf, bytestoread);
+		ret = usb_bulk_msg(dev->usb_dev, usb_sndbulkpipe(dev->usb_dev, usb_endpoint_num(dev->ep_out)),
+					dev->out_buf, ptr - dev->out_buf, &actual, 2000);
+		if (ret < 0)
+			goto unlock;
+		ret = usb_bulk_msg(dev->usb_dev, usb_rcvbulkpipe(dev->usb_dev, usb_endpoint_num(dev->ep_in)),
+					dev->in_buf, 32, &actual, 2000);
+		if (ret < 0)
+			goto unlock;
+		if (dev->in_buf[0] & 0x80) // check status for NACK
+			ret = -ETIMEDOUT;
 		if (ret > -1) {
-			memcpy(&msg->buf[byteoffset], dev->in_buf, bytestoread);
+			memcpy(&msg->buf[byteoffset], &dev->in_buf[1], bytestoread);
 			byteoffset += bytestoread;
 		}
-
+unlock:
 		mutex_unlock(&ch341_lock);
 
 		if (ret < 0)
@@ -475,11 +479,8 @@ int ch341_i2c_write(struct ch341_device *dev, struct i2c_msg *msg) {
 		lenptr = outptr++;
 		if (first) {
 			*outptr++ = msg->addr << 1;
-			if (left == 0) {
-				*outptr++ = CH341_CMD_I2C_STM_IN;
-			}
 		}
-		avail = 32 - (outptr - dev->out_buf) - 1;
+		avail = 32 - (outptr - dev->out_buf);
 		wlen = avail;
 		if (left < avail) {
 			wlen = left;
@@ -495,7 +496,6 @@ int ch341_i2c_write(struct ch341_device *dev, struct i2c_msg *msg) {
 		if (left == 0) {  // Stop packet
 			*outptr++ = CH341_CMD_I2C_STM_STO;
 		}
-		*outptr++ = CH341_CMD_I2C_STM_END;
 		first = false;
 		ret = ch341_usb_transfer(dev, outptr - dev->out_buf, 0);
 
@@ -523,24 +523,19 @@ static int ch341_i2c_transfer(struct i2c_adapter *adpt, struct i2c_msg *msgs, in
 	CHECK_PARAM_RET(ch341_dev, EIO);
 
 	for (i = 0; i < num; ++i) {
-		//DEV_DBG(CH341_IF_ADDR, "msgs[%d] = {.addr = 0x%02x, .len = %d}", i, msgs[i].addr, msgs[i].len); 
 		if (msgs[i].flags & I2C_M_TEN) {
 			DEV_ERR(CH341_IF_ADDR, "10 bit i2c addresses not supported");
 			result = -EINVAL;
 			break;
 		}
-		if (i == 0) {
-#ifdef PHANTOM_DEVICE_FIX
-			result = ch341_i2c_check_dev(ch341_dev, msgs[0].addr);
-			if (result < 0)
-				break;
-#endif
-		}
 		if (msgs[i].flags & I2C_M_RD) {
-			result = ch341_i2c_read(ch341_dev, &msgs[i]);
+			result = ch341_i2c_read(ch341_dev, &msgs[i]); // checks for NACK of msg->addr
 			if (result < 0)
 				break;
 		} else {
+			result = ch341_i2c_quick_write(ch341_dev, &msgs[i]); // checks for NACK of msg->addr
+			if (result < 0)
+				break;
 			result = ch341_i2c_write(ch341_dev, &msgs[i]);
 			if (result < 0)
 				break;
@@ -651,9 +646,7 @@ int ch341_irq_set_type(struct irq_data *data, unsigned int type)
 	struct ch341_device *ch341_dev;
 	int irq;
 
-	CHECK_PARAM_RET(data
-			&& (ch341_dev =
-				irq_data_get_irq_chip_data(data)), -EINVAL);
+	CHECK_PARAM_RET(data && (ch341_dev = irq_data_get_irq_chip_data(data)), -EINVAL);
 
 	// calculate local IRQ
 	irq = data->irq - ch341_dev->irq_base;
@@ -675,7 +668,7 @@ static int ch341_irq_check(struct ch341_device *ch341_dev, uint8_t irq,
 	int type;
 
 	CHECK_PARAM_RET(old != new, CH341_OK)
-		CHECK_PARAM_RET(ch341_dev, -EINVAL);
+	CHECK_PARAM_RET(ch341_dev, -EINVAL);
 	CHECK_PARAM_RET(irq < ch341_dev->irq_num, -EINVAL);
 
 	// valid IRQ is in range 0 ... ch341_dev->irq_num-1, invalid IRQ is -1
@@ -692,15 +685,12 @@ static int ch341_irq_check(struct ch341_device *ch341_dev, uint8_t irq,
 	if (!hardware && irq == ch341_dev->irq_hw && new > old)
 		return CH341_OK;
 
-	if ((type & IRQ_TYPE_EDGE_FALLING && old > new)
-		|| (type & IRQ_TYPE_EDGE_RISING && new > old)) {
+	if ((type & IRQ_TYPE_EDGE_FALLING && old > new) || (type & IRQ_TYPE_EDGE_RISING && new > old)) {
 		// DEV_DBG (CH341_IF_ADDR, "%s irq=%d %d %s",
 		//          hardware ? "hardware" : "software",
 		//          irq, type, (old > new) ? "falling" : "rising");
 
-		handle_simple_irq(irq_data_to_desc
-				  (irq_get_irq_data
-				   (ch341_dev->irq_base + irq)));
+		handle_simple_irq(irq_data_to_desc(irq_get_irq_data(ch341_dev->irq_base + irq)));
 	}
 
 	return CH341_OK;
@@ -737,8 +727,7 @@ static int ch341_irq_probe(struct ch341_device *ch341_dev)
 
 		irq_set_chip(ch341_dev->irq_base + i, &ch341_dev->irq);
 		irq_set_chip_data(ch341_dev->irq_base + i, ch341_dev);
-		irq_clear_status_flags(ch341_dev->irq_base + i,
-					   IRQ_NOREQUEST | IRQ_NOPROBE);
+		irq_clear_status_flags(ch341_dev->irq_base + i, IRQ_NOREQUEST | IRQ_NOPROBE);
 	}
 
 	DEV_DBG(CH341_IF_ADDR, "done");
